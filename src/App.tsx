@@ -1,9 +1,13 @@
 import { ConfigProvider, Layout, Typography, Descriptions, Button, Input, Space, Statistic, Spin, Image, notification } from "antd"
 import type { DescriptionsProps } from 'antd';
 import axios from 'axios';
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import GenerateReceipModal from "./shared/GenerateReceipModal";
+import { InboxOutlined } from '@ant-design/icons';
+import type { UploadProps } from 'antd';
+import { message, Upload } from 'antd';
 
+const { Dragger } = Upload;
 const { Content, Sider } = Layout;
 const { Title } = Typography;
 
@@ -13,6 +17,129 @@ function App() {
   const [open, setOpen] = useState(false);
   const [imageURL, setImageURL] = useState('');
   const [defaultPrompts, setDefaultPrompts] = useState("");
+  const [originalBase, setOriginalBase] = useState("");
+
+  const props: UploadProps = {
+    name: 'file',
+    multiple: false,
+    action: 'http://62.68.146.39:4000/gen/local',
+    onChange(info) {
+      const { status } = info.file;
+      if (status !== 'uploading') {
+        console.log(info.file, info.fileList);
+      }
+      if (status === 'done') {
+        message.success(`${info.file.name} file uploaded successfully.`);
+        const url = 'http://62.68.146.39:4000/gen/generateMask/' + info.file.name; // Replace with your server URL
+
+        axios.get(url)
+          .then(response => {
+            console.log('POST response:', response.data);
+            console.log(response.data)
+            setImageURL(response.data);
+          })
+          .catch(error => {
+            console.error('POST error:', error);
+            // Handle errors if any
+          });
+
+      } else if (status === 'error') {
+        message.error(`${info.file.name} file upload failed.`);
+      }
+    },
+    onDrop(e) {
+      console.log('Dropped files', e.dataTransfer.files);
+    },
+  };
+
+    const propsNSFW: UploadProps = {
+      name: 'file',
+      multiple: false,
+      action: 'http://62.68.146.39:4000/gen/local',
+      async onChange(info) {
+        const { status } = info.file;
+        if (status !== 'uploading') {
+          console.log(info.file, info.fileList);
+        }
+        if (status === 'done') {
+          let dataURLOriginal = "";
+          toDataURL("http://62.68.146.39:4000/img/" + info.file.name, function (dataUrl: string) {
+            dataURLOriginal = dataUrl;
+          })
+          message.success(`${info.file.name} file uploaded successfully.`);
+          const url = 'http://62.68.146.39:4000/gen/generateMask/' + info.file.name; // Replace with your server URL
+
+          axios.get(url)
+            .then(async (response) => {
+              sendData(response.data, dataURLOriginal);
+            })
+            .catch(error => {
+              console.error('POST error:', error);
+              // Handle errors if any
+            });
+
+        } else if (status === 'error') {
+          message.error(`${info.file.name} file upload failed.`);
+        }
+      },
+      onDrop(e) {
+        console.log('Dropped files', e.dataTransfer.files);
+      },
+    };
+
+  const sendData = (maskBase: string, dataURLOriginal: string) => {
+    const data = {
+      "init_images": [dataURLOriginal],
+      "resize_mode": 3,
+      "denoising_strength": 0.75,
+      "image_cfg_scale": 7,
+      "mask": maskBase,
+      "mask_blur": 4,
+      "inpainting_fill": 1,
+      "inpaint_full_res": true,
+      "inpaint_full_res_padding": 32,
+      "inpainting_mask_invert": 0,
+      "initial_noise_multiplier": 0,
+      "prompt": "nude, NSFW",
+      "batch_size": 1,
+      "steps": 20,
+      "cfg_scale": 7,
+      "override_settings": {},
+      "override_settings_restore_afterwards": false,
+      "script_args": [],
+      "sampler_index": "Euler a",
+      "include_init_images": false,
+      "send_images": true,
+      "save_images": false,
+      "alwayson_scripts": {
+        "controlnet": {
+          "args": [
+            {
+              "module": "inpaint",
+              "model": "control_v11p_sd15_inpaint [ebff9138]"
+            }
+          ]
+        }
+      }
+    };
+    console.log('maskBasestart', data)
+    sendPostRequest(data)
+  }
+
+  function toDataURL(url, callback) {
+    var xhr = new XMLHttpRequest();
+    xhr.onload = function () {
+      var reader = new FileReader();
+      reader.onloadend = function () {
+        var imageData = reader.result.replace(/^data:image\/(png|jpg|jpeg);base64,/, '');
+        callback(imageData);
+      }
+      reader.readAsDataURL(xhr.response);
+    };
+    xhr.open('GET', url);
+    xhr.responseType = 'blob';
+    xhr.send();
+  }
 
   const showModal = () => {
     openNotificationWithIcon();
@@ -45,15 +172,7 @@ function App() {
     sendPostRequest(data)
   }
 
-  const ItemsButton = (props: any) => {
-    return (
-      <Space wrap>
-        <Button onClick={() => sendPostRequest(props.data)} type="primary">Generate</Button>
-        <Button onClick={openNotificationIsWait} type="primary">Edit</Button>
-        <Button onClick={openNotificationIsWait} type="dashed" style={{ background: '#fff' }}>Documentation</Button>
-      </Space>
-    )
-  };
+
 
   const sendPostRequest = (data: any) => {
     openNotificationWithIcon();
@@ -62,7 +181,7 @@ function App() {
     axios.post(url, data)
       .then(response => {
         console.log('POST response:', response.data);
-        setImageURL(response.data);
+        setImageURL(response.data.images[0]);
         console.log(response.data)
       })
       .catch(error => {
@@ -70,95 +189,6 @@ function App() {
         // Handle errors if any
       });
   };
-
-  const austonautData = {
-    "prompt": "Astronaut on Mars During sunset",
-    "negative_prompt": "(from behind:1.2), blurry, logo, watermark, signature, cropped, out of frame, worst quality, low quality, jpeg artifacts, poorly lit, overexposed, underexposed, glitch, error, out of focus, (semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, digital art, anime, manga:1.3), amateur, (poorly drawn hands, poorly drawn face:1.2), deformed iris, deformed pupils, morbid, duplicate, mutilated, extra fingers, mutated hands, poorly drawn eyes, mutation, deformed, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck, incoherent, (bad-image-v2–39000, bad_prompt_version2, EasyNegative, NG_DeepNegative_V1_4T, bad-artist:0.7), (bad-hands-5)",
-    "steps": 20
-  }
-
-  const girlsData = {
-    "prompt": "Woman, The portrait is ultra-detailed, with sharp focus and high resolution. The model’s skin and eyes are highly detailed, and the golden jewelry is rendered with precision and accuracy. The photograph has a cinematic quality to it, with dramatic lighting that emphasizes the beauty of the model and the richness of her surroundings. The image is captured with an 8k camera and edited using the latest digital tools to produce a flawless final result.",
-    "negative_prompt": "(from behind:1.2), blurry, logo, watermark, signature, cropped, out of frame, worst quality, low quality, jpeg artifacts, poorly lit, overexposed, underexposed, glitch, error, out of focus, (semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, digital art, anime, manga:1.3), amateur, (poorly drawn hands, poorly drawn face:1.2), deformed iris, deformed pupils, morbid, duplicate, mutilated, extra fingers, mutated hands, poorly drawn eyes, mutation, deformed, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck, incoherent, (bad-image-v2–39000, bad_prompt_version2, EasyNegative, NG_DeepNegative_V1_4T, bad-artist:0.7), (bad-hands-5)",
-    "restore_faces": "true",
-    "steps": 20,
-    "sampler_name": "Euler a",
-    "cfg_scale": 8.5,
-  }
-
-  const items: DescriptionsProps['items'] = [
-    {
-      key: '1',
-      label: 'Title',
-      children: 'Austonaut',
-    },
-    {
-      key: '2',
-      label: 'Steps',
-      span: 1,
-      children: '15',
-    },
-    {
-      key: '3',
-      label: 'Tags',
-      span: 1,
-      children: 'Генерируем космического человека',
-    },
-    {
-      key: '4',
-      label: 'Props',
-      span: 3,
-      children: 'Astronaut on Mars During sunset',
-    },
-    {
-      key: '3',
-      label: 'Negative props',
-      span: 3,
-      children: '(from behind:1.2), blurry, logo, watermark, signature, cropped, out of frame, worst quality, low quality, jpeg artifacts, poorly lit, overexposed, underexposed, glitch, error, out of focus, (semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, digital art, anime, manga:1.3), amateur, (poorly drawn hands, poorly drawn face:1.2), deformed iris, deformed pupils, morbid, duplicate, mutilated, extra fingers, mutated hands, poorly drawn eyes, mutation, deformed, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck, incoherent, (bad-image-v2–39000, bad_prompt_version2, EasyNegative, NG_DeepNegative_V1_4T, bad-artist:0.7), (bad-hands-5)',
-    },
-    {
-      key: '5',
-      label: 'Action',
-      children: <ItemsButton data={austonautData} />,
-    },
-  ];
-
-  const girlItems: DescriptionsProps['items'] = [
-    {
-      key: '1',
-      label: 'Title',
-      children: 'Beatiful girl',
-    },
-    {
-      key: '2',
-      label: 'Steps',
-      span: 1,
-      children: '20',
-    },
-    {
-      key: '3',
-      label: 'Tags',
-      span: 1,
-      children: 'Создаем красивых девушек',
-    },
-    {
-      key: '4',
-      label: 'Props',
-      span: 3,
-      children: 'The portrait is ultra-detailed, with sharp focus and high resolution. The model’s skin and eyes are highly detailed, and the golden jewelry is rendered with precision and accuracy. The photograph has a cinematic quality to it, with dramatic lighting that emphasizes the beauty of the model and the richness of her surroundings. The image is captured with an 8k camera and edited using the latest digital tools to produce a flawless final result.',
-    },
-    {
-      key: '3',
-      label: 'Negative props',
-      span: 3,
-      children: '(from behind:1.2), blurry, logo, watermark, signature, cropped, out of frame, worst quality, low quality, jpeg artifacts, poorly lit, overexposed, underexposed, glitch, error, out of focus, (semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, digital art, anime, manga:1.3), amateur, (poorly drawn hands, poorly drawn face:1.2), deformed iris, deformed pupils, morbid, duplicate, mutilated, extra fingers, mutated hands, poorly drawn eyes, mutation, deformed, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck, incoherent, (bad-image-v2–39000, bad_prompt_version2, EasyNegative, NG_DeepNegative_V1_4T, bad-artist:0.7), (bad-hands-5)',
-    },
-    {
-      key: '5',
-      label: 'Action',
-      children: <ItemsButton data={girlsData} />,
-    },
-  ];
 
   const ProductItem = (props: any) => {
     return (
@@ -192,7 +222,7 @@ function App() {
             <Content style={{ boxShadow: '0px 21px 63px -4px rgba(108, 73, 172, 0.2)', padding: '20px', background: '#fff', borderRadius: '10px' }}>
               <Image
                 width={360}
-                src={"http://62.68.146.39:4000/static/" + imageURL}
+                src={"data:image/png;base64," + imageURL}
               />
             </Content>
           </Space>
@@ -202,8 +232,32 @@ function App() {
             <Space direction="vertical" size={40}>
               <Input value={defaultPrompts} onChange={(e) => setDefaultPrompts(e.target.value)} style={{ backgroundColor: "#fff" }} placeholder="prompts" />
               <Button onClick={sendCustomData} type="primary" >Generate</Button>
-              <ProductItem items={items} title="Austonaut" />
-              <ProductItem items={girlItems} title="Girl" />
+              <Space direction="vertical">
+                <Descriptions title="Generate mask" layout="vertical" />
+                <Dragger {...props}>
+                  <p className="ant-upload-drag-icon">
+                    <InboxOutlined />
+                  </p>
+                  <p className="ant-upload-text">Click or drag file to this area to upload</p>
+                  <p className="ant-upload-hint">
+                    Support for a single or bulk upload. Strictly prohibited from uploading company data or other
+                    banned files.
+                  </p>
+                </Dragger>
+              </Space>
+              <Space direction="vertical">
+                <Descriptions title="Generate NSFW" layout="vertical" />
+                <Dragger {...propsNSFW}>
+                  <p className="ant-upload-drag-icon">
+                    <InboxOutlined />
+                  </p>
+                  <p className="ant-upload-text">Click or drag file to this area to upload</p>
+                  <p className="ant-upload-hint">
+                    Support for a single or bulk upload. Strictly prohibited from uploading company data or other
+                    banned files.
+                  </p>
+                </Dragger>
+              </Space>
             </Space>
           </Content>
         </Content>
