@@ -18,6 +18,8 @@ function App() {
   const [imageURL, setImageURL] = useState('');
   const [defaultPrompts, setDefaultPrompts] = useState("");
   const [originalBase, setOriginalBase] = useState("");
+  const [originalPhoto, setOriginalPhoto] = useState("");
+  const [userFace, setUserFace] = useState("");
 
   const props: UploadProps = {
     name: 'file',
@@ -52,77 +54,73 @@ function App() {
     },
   };
 
-    const propsNSFW: UploadProps = {
-      name: 'file',
-      multiple: false,
-      action: 'http://62.68.146.39:4000/gen/local',
-      async onChange(info) {
-        const { status } = info.file;
-        if (status !== 'uploading') {
-          console.log(info.file, info.fileList);
-        }
-        if (status === 'done') {
-          let dataURLOriginal = "";
-          toDataURL("http://62.68.146.39:4000/img/" + info.file.name, function (dataUrl: string) {
-            dataURLOriginal = dataUrl;
-          })
-          message.success(`${info.file.name} file uploaded successfully.`);
-          const url = 'http://62.68.146.39:4000/gen/generateMask/' + info.file.name; // Replace with your server URL
-
-          axios.get(url)
-            .then(async (response) => {
-              sendData(response.data, dataURLOriginal);
-            })
-            .catch(error => {
-              console.error('POST error:', error);
-              // Handle errors if any
-            });
-
-        } else if (status === 'error') {
-          message.error(`${info.file.name} file upload failed.`);
-        }
-      },
-      onDrop(e) {
-        console.log('Dropped files', e.dataTransfer.files);
-      },
-    };
-
-  const sendData = (maskBase: string, dataURLOriginal: string) => {
-    const data = {
-      "init_images": [dataURLOriginal],
-      "resize_mode": 3,
-      "denoising_strength": 0.75,
-      "image_cfg_scale": 7,
-      "mask": maskBase,
-      "mask_blur": 4,
-      "inpainting_fill": 1,
-      "inpaint_full_res": true,
-      "inpaint_full_res_padding": 32,
-      "inpainting_mask_invert": 0,
-      "initial_noise_multiplier": 0,
-      "prompt": "nude, NSFW",
-      "batch_size": 1,
-      "steps": 20,
-      "cfg_scale": 7,
-      "override_settings": {},
-      "override_settings_restore_afterwards": false,
-      "script_args": [],
-      "sampler_index": "Euler a",
-      "include_init_images": false,
-      "send_images": true,
-      "save_images": false,
-      "alwayson_scripts": {
-        "controlnet": {
-          "args": [
-            {
-              "module": "inpaint",
-              "model": "control_v11p_sd15_inpaint [ebff9138]"
-            }
-          ]
-        }
+  const propsNSFW: UploadProps = {
+    name: 'file',
+    multiple: false,
+    action: 'http://62.68.146.39:4000/gen/local',
+    async onChange(info) {
+      const { status } = info.file;
+      if (status !== 'uploading') {
+        console.log(info.file, info.fileList);
       }
+      if (status === 'done') {
+        let dataURLOriginal = "";
+        toDataURL("http://62.68.146.39:4000/img/" + info.file.name, function (dataUrl: string) {
+          dataURLOriginal = dataUrl;
+        })
+        message.success(`${info.file.name} file uploaded successfully.`);
+        sendData(info.file.name);
+      } else if (status === 'error') {
+        message.error(`${info.file.name} file upload failed.`);
+      }
+    },
+    onDrop(e) {
+      console.log('Dropped files', e.dataTransfer.files);
+    },
+  };
+
+  const propsOriginal: UploadProps = {
+    name: 'file',
+    multiple: false,
+    action: 'http://62.68.146.39:4000/gen/local',
+    async onChange(info) {
+      const dataURLOriginal = await getFileBase64(info.file.originFileObj);
+      setOriginalPhoto(dataURLOriginal);
+      console.log(dataURLOriginal);
+    },
+    onDrop(e) {
+      console.log('Dropped files', e.dataTransfer.files);
+    },
+  };
+
+  const propsUserFace: UploadProps = {
+    name: 'file',
+    multiple: false,
+    action: 'http://62.68.146.39:4000/gen/local',
+    async onChange(info) {
+      const dataURLOriginal = await getFileBase64(info.file.originFileObj);
+      setUserFace(dataURLOriginal);
+      console.log(dataURLOriginal);
+    },
+    onDrop(e) {
+      console.log('Dropped files', e.dataTransfer.files);
+    },
+  };
+
+  async function getFileBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  const sendData = (dataURLOriginal: string) => {
+    const data = {
+      "imageName": dataURLOriginal
     };
-    console.log('maskBasestart', data)
+    console.log(data)
     sendPostRequest(data)
   }
 
@@ -165,11 +163,20 @@ function App() {
 
   const sendCustomData = () => {
     const data = {
-      "prompt": defaultPrompts,
-      "negative_prompt": "(from behind:1.2), blurry, logo, watermark, signature, cropped, out of frame, worst quality, low quality, jpeg artifacts, poorly lit, overexposed, underexposed, glitch, error, out of focus, (semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, digital art, anime, manga:1.3), amateur, (poorly drawn hands, poorly drawn face:1.2), deformed iris, deformed pupils, morbid, duplicate, mutilated, extra fingers, mutated hands, poorly drawn eyes, mutation, deformed, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck, incoherent, (bad-image-v2–39000, bad_prompt_version2, EasyNegative, NG_DeepNegative_V1_4T, bad-artist:0.7), (bad-hands-5)",
-      "steps": 30
+      "original": originalPhoto,
+      "userFace": userFace
     };
-    sendPostRequest(data)
+    const url = 'http://62.68.146.39:4000/gen/faceSwap'; // Replace with your server URL
+
+    axios.post(url, data)
+      .then(response => {
+        console.log('POST response:', response.data);
+        setImageURL(response.data);
+      })
+      .catch(error => {
+        console.error('POST error:', error);
+        // Handle errors if any
+      });
   }
 
 
@@ -181,8 +188,7 @@ function App() {
     axios.post(url, data)
       .then(response => {
         console.log('POST response:', response.data);
-        setImageURL(response.data.images[0]);
-        console.log(response.data)
+        setImageURL(response.data);
       })
       .catch(error => {
         console.error('POST error:', error);
@@ -233,19 +239,6 @@ function App() {
               <Input value={defaultPrompts} onChange={(e) => setDefaultPrompts(e.target.value)} style={{ backgroundColor: "#fff" }} placeholder="prompts" />
               <Button onClick={sendCustomData} type="primary" >Generate</Button>
               <Space direction="vertical">
-                <Descriptions title="Generate mask" layout="vertical" />
-                <Dragger {...props}>
-                  <p className="ant-upload-drag-icon">
-                    <InboxOutlined />
-                  </p>
-                  <p className="ant-upload-text">Click or drag file to this area to upload</p>
-                  <p className="ant-upload-hint">
-                    Support for a single or bulk upload. Strictly prohibited from uploading company data or other
-                    banned files.
-                  </p>
-                </Dragger>
-              </Space>
-              <Space direction="vertical">
                 <Descriptions title="Generate NSFW" layout="vertical" />
                 <Dragger {...propsNSFW}>
                   <p className="ant-upload-drag-icon">
@@ -257,6 +250,40 @@ function App() {
                     banned files.
                   </p>
                 </Dragger>
+              </Space>
+              <Space direction="vertical">
+                <Descriptions title="Generate faceswap" layout="vertical" />
+                <Space direction="vertical">
+                  <Dragger {...propsOriginal}>
+                    <p className="ant-upload-drag-icon">
+                      <InboxOutlined />
+                    </p>
+                    <p className="ant-upload-text">СЮДА ЗАГРУЖАЕМ ОРИГИНАЛ</p>
+                    <p className="ant-upload-hint">
+                      Support for a single or bulk upload. Strictly prohibited from uploading company data or other
+                      banned files.
+                    </p>
+                  </Dragger>
+                  <Dragger {...propsUserFace}>
+                    <p className="ant-upload-drag-icon">
+                      <InboxOutlined />
+                    </p>
+                    <p className="ant-upload-text">СЮДА ЛИЦО ПОЛЬЗОВАТЕЛЯ</p>
+                    <p className="ant-upload-hint">
+                      Support for a single or bulk upload. Strictly prohibited from uploading company data or other
+                      banned files.
+                    </p>
+                  </Dragger>
+                  <Image
+                    width={360}
+                    src={originalPhoto}
+                  />
+                  <Image
+                    width={360}
+                    src={userFace}
+                  />
+                </Space>
+                <Button onClick={sendCustomData} type="primary" >Generate</Button>
               </Space>
             </Space>
           </Content>
