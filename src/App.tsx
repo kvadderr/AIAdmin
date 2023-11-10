@@ -167,7 +167,7 @@ function App() {
       "userFace": userFace
     };
     const url = 'http://62.68.146.39:4000/gen/faceSwap'; // Replace with your server URL
-
+    openNotificationWithIcon();
     axios.post(url, data)
       .then(response => {
         console.log('POST response:', response.data);
